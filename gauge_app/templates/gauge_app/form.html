@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Gauge Needle Predictor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      background-color: #f9f9f9;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    .hero {
+      background: linear-gradient(90deg, #6a00f4 0%, #9333ea 100%);
+      color: white;
+      padding: 80px 20px;
+      text-align: center;
+    }
+    .hero h1 {
+      font-size: 3rem;
+      font-weight: bold;
+    }
+    .hero p {
+      font-size: 1.2rem;
+      max-width: 600px;
+      margin: 10px auto 30px;
+    }
+    .content {
+      max-width: 1100px;
+      margin: 40px auto;
+      padding: 30px;
+      background-color: white;
+      border-radius: 16px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.05);
+    }
+    .preview-img, .output-img {
+      width: 100%;
+      border-radius: 10px;
+      border: 2px solid #dee2e6;
+      margin-top: 10px;
+    }
+    .tab-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+    }
+    .tab-buttons .btn {
+      border-radius: 30px;
+      padding: 10px 24px;
+    }
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>Gauge Needle Predictor</h1>
+  <p>Upload or capture a gauge image and instantly see the predicted value using YOLOv8 AI.</p>
+</div>
+
+<div class="content">
+
+  <div class="tab-buttons mb-4">
+    <button class="btn btn-primary" onclick="showTab('upload')">Upload Image</button>
+    <button class="btn btn-outline-primary" onclick="showTab('webcam')">Use Webcam</button>
+  </div>
+
+  <form method="post" enctype="multipart/form-data" id="predictForm">
+    {% csrf_token %}
+
+    <div id="uploadTab">
+      <div class="mb-3">
+        <label class="form-label">Upload Gauge Image</label>
+        <input type="file" name="image" accept="image/*" id="imageInput" class="form-control">
+        <img id="imgPreview" class="preview-img hidden" alt="Preview">
+      </div>
+    </div>
+
+    <div id="webcamTab" class="hidden text-center">
+      <button type="button" class="btn btn-secondary mb-3" onclick="startWebcam()">Start Webcam</button>
+      <video id="webcamStream" autoplay playsinline class="rounded w-100 mb-2 hidden"></video>
+      <canvas id="canvas" width="640" height="480" class="d-none"></canvas>
+      <button type="button" class="btn btn-success mt-2 hidden" onclick="capture()">Capture</button>
+    </div>
+
+    <div class="row mt-4">
+      <div class="col-md-6">
+        <label class="form-label">Minimum Value</label>
+        {{ form.min_value }}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Maximum Value</label>
+        {{ form.max_value }}
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-dark w-100 mt-4">Predict</button>
+  </form>
+
+  {%if value is not None%}
+  <hr class="my-5">
+  <div class="alert alert-success text-center fs-5 fw-bold">
+    ✅ Predicted Gauge Reading: {{ value }}
+  </div>
+  <div class="row">
+    <div class="col-md-6">
+      <h6 class="text-center">Uploaded Image</h6>
+      <img src="{{ uploaded_image_base64 }}" class="preview-img" alt="Original Image">
+    </div>
+    <div class="col-md-6">
+      <h6 class="text-center">Prediction Output</h6>
+      <img src="{{ output_image_base64 }}" class="output-img" alt="Prediction">
+    </div>
+  </div>
+  {% endif %}
+
+  {% if error %}
+  <div class="alert alert-danger text-center mt-4">{{ error }}</div>
+  {% endif %}
+</div>
+
+<script>
+  const imgInput = document.getElementById('imageInput');
+  const imgPreview = document.getElementById('imgPreview');
+  const webcamStream = document.getElementById('webcamStream');
+  const canvas = document.getElementById('canvas');
+
+  function showTab(tab) {
+    document.getElementById('uploadTab').classList.add('hidden');
+    document.getElementById('webcamTab').classList.add('hidden');
+    if (tab === 'upload') {
+      document.getElementById('uploadTab').classList.remove('hidden');
+    } else {
+      document.getElementById('webcamTab').classList.remove('hidden');
+    }
+  }
+
+  imgInput.addEventListener('change', () => {
+    const file = imgInput.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = e => {
+        imgPreview.src = e.target.result;
+        imgPreview.classList.remove('hidden');
+      };
+      reader.readAsDataURL(file);
+    }
+  });
+
+  function startWebcam() {
+    navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+      webcamStream.srcObject = stream;
+      webcamStream.classList.remove('hidden');
+      document.querySelector('.btn-success').classList.remove('hidden');
+    }).catch(err => {
+      alert("Webcam not accessible.");
+    });
+  }
+
+  function capture() {
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(webcamStream, 0, 0, canvas.width, canvas.height);
+  
+    canvas.toBlob(blob => {
+      const file = new File([blob], 'webcam.png', { type: 'image/png' });
+  
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      document.querySelector('input[name="image"]').files = dt.files;
+  
+      const reader = new FileReader();
+      reader.onload = e => {
+        imgPreview.src = e.target.result;
+        imgPreview.classList.remove('hidden');
+        showTab('upload');
+      };
+      reader.readAsDataURL(file);
+  
+      alert("Captured! Click Predict to continue.");
+    }, 'image/png');
+  }
+  
+</script>
+</body>
+</html>
